@@ -278,76 +278,17 @@ void C4Object::DoMovement()
 
 	if (!Action.t_attach) // Unattached movement  = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 	{
-		// Horizontal movement - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-		// Move to target
-		while (fixtoi(new_x) != fixtoi(fix_x))
+		int steps_x_max = Abs(fixtoi(xdir));
+		int steps_y_max = Abs(fixtoi(ydir));
+		int divisor = std::max(1, std::min(steps_x_max, steps_y_max));
+		// Do between 1 and 10 steps per loop
+		int steps_per_loop_x = std::min(std::max(1, steps_x_max / divisor), 10);
+		int steps_per_loop_y = std::min(std::max(1, steps_y_max / divisor), 10);
+
+		while (fixtoi(new_x) != fixtoi(fix_x) || fixtoi(new_y) != fixtoi(fix_y))
 		{
-			// Next step
-			int step_x = Sign(new_x - fix_x);
-			uint32_t border_hack_contacts = 0;
-			int32_t current_contacts = ContactCheck(GetX() + step_x, GetY(), &border_hack_contacts);
-			if (current_contacts || border_hack_contacts)
-			{
-				has_contact = true;
-				contact_bits |= t_contact | border_hack_contacts;
-			}
-			if (current_contacts)
-			{
-				// Abort horizontal movement
-				new_x = fix_x;
-				// Vertical redirection (always)
-				RedirectForce(xdir, ydir, -1);
-				ApplyFriction(ydir, ContactVtxFriction(this));
-			}
-			else // Free horizontal movement
-			{
-				DoMotion(step_x, 0);
-				has_moved = true;
-			}
-		}
-		// Vertical movement - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-		// Movement target
-		new_y = fix_y + ydir;
-		// Movement bounds (vertical)
-		VerticalBounds(new_y);
-		// Move to target
-		while (fixtoi(new_y) != fixtoi(fix_y))
-		{
-			// Next step
-			int step_y = Sign(new_y - fix_y);
-			int32_t current_contacts = ContactCheck(GetX(), GetY() + step_y, nullptr, ydir > 0);
-			if (current_contacts)
-			{
-				has_contact = true;
-				contact_bits |= t_contact;
-				new_y = fix_y;
-				// Vertical contact horizontal friction
-				ApplyFriction(xdir, ContactVtxFriction(this));
-				// Redirection slide or rotate
-				if (!ContactVtxCNAT(this, CNAT_Left))
-				{
-					RedirectForce(ydir, xdir, -1);
-				}
-				else if (!ContactVtxCNAT(this, CNAT_Right))
-				{
-					RedirectForce(ydir, xdir, +1);
-				}
-				else
-				{
-					// Living things are always capable of keeping their rotation
-					if ((OCF & OCF_Rotate) && current_contacts == 1 && !Alive)
-					{
-						RedirectForce(ydir, rdir, -ContactVtxWeight(this));
-						redirected_force_from_ydir_to_rdir = true;
-					}
-					ydir = 0;
-				}
-			}
-			else // Free vertical movement
-			{
-				DoMotion(0, step_y);
-				has_moved = true;
-			}
+			DoMovementHorizontal(new_x, steps_per_loop_x, has_contact, has_moved, contact_bits, new_y);
+			DoMovementVertical(new_y, steps_per_loop_y, has_contact, has_moved, contact_bits, redirected_force_from_ydir_to_rdir);
 		}
 	}
 	if (Action.t_attach) // Attached movement = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
@@ -570,6 +511,80 @@ void C4Object::DoMovement()
 		if (has_moved)
 		{
 			UpdatePos();
+		}
+	}
+}
+
+void C4Object::DoMovementHorizontal(C4Real &new_x, int steps, bool &has_contact, bool &has_moved, int &contact_bits, C4Real &new_y)
+{
+	for (int step = 0; (fixtoi(new_x) != fixtoi(fix_x)) && (step < steps); step++)
+	{
+		// Next step
+		int step_x = Sign(new_x - fix_x);
+		uint32_t border_hack_contacts = 0;
+		int32_t current_contacts = ContactCheck(GetX() + step_x, GetY(), &border_hack_contacts);
+		if (current_contacts || border_hack_contacts)
+		{
+			has_contact = true;
+			contact_bits |= t_contact | border_hack_contacts;
+		}
+		if (current_contacts)
+		{
+			// Abort horizontal movement
+			new_x = fix_x;
+			// Vertical redirection (always)
+			RedirectForce(xdir, ydir, -1);
+			ApplyFriction(ydir, ContactVtxFriction(this));
+			// Update y dir and vertical bounds after possible collision and redirection of force
+			new_y = fix_y + ydir;
+			VerticalBounds(new_y);
+		}
+		else // Free horizontal movement
+		{
+			DoMotion(step_x, 0);
+			has_moved = true;
+		}
+	}
+}
+
+void C4Object::DoMovementVertical(C4Real &new_y, int steps, bool &has_contact, bool &has_moved, int &contact_bits, bool &redirected_force_from_ydir_to_rdir)
+{
+	for (int step = 0; (fixtoi(new_y) != fixtoi(fix_y)) && (step < steps); step++)
+	{
+		// Next step
+		int step_y = Sign(new_y - fix_y);
+		int32_t current_contacts = ContactCheck(GetX(), GetY() + step_y, nullptr, ydir > 0);
+		if (current_contacts)
+		{
+			has_contact = true;
+			contact_bits |= t_contact;
+			new_y = fix_y;
+			// Vertical contact horizontal friction
+			ApplyFriction(xdir, ContactVtxFriction(this));
+			// Redirection slide or rotate
+			if (!ContactVtxCNAT(this, CNAT_Left))
+			{
+				RedirectForce(ydir, xdir, -1);
+			}
+			else if (!ContactVtxCNAT(this, CNAT_Right))
+			{
+				RedirectForce(ydir, xdir, +1);
+			}
+			else
+			{
+				// Living things are always capable of keeping their rotation
+				if ((OCF & OCF_Rotate) && current_contacts == 1 && !Alive)
+				{
+					RedirectForce(ydir, rdir, -ContactVtxWeight(this));
+					redirected_force_from_ydir_to_rdir = true;
+				}
+				ydir = 0;
+			}
+		}
+		else // Free vertical movement
+		{
+			DoMotion(0, step_y);
+			has_moved = true;
 		}
 	}
 }

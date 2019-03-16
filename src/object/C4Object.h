@@ -104,6 +104,8 @@ private:
 	void Splash();
 	void RemoveSolidMask(bool fBackupAttachment); // Remove solid mask data, if existing
 	void MovementDigFreeTargetArea(); // Dig the area free, according to action data
+	void DoMovementHorizontal(C4Real &new_x, int steps, bool &has_contact, bool &has_moved, int &contact_bits, C4Real &new_y);
+	void DoMovementVertical(C4Real &new_y, int steps, bool &has_contact, bool &has_moved, int &contact_bits, bool &redirected_force_from_ydir_to_rdir);
 public:
 	C4Object();
 	~C4Object() override;
